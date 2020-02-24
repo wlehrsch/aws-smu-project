@@ -1,6 +1,6 @@
 ---
-aws_access_key: "AKIA2H7KOBVHLQTUQ3PM"
-aws_secret_key: "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"
+aws_access_key: "XXXXXXXXXXXXXXXXXXXXX"
+aws_secret_key: "XXXXXXXXXXXXXXXXXXXXX"
 region: "us-east-1"
 
 vpc_cidr1: 10.10.0.0/16
