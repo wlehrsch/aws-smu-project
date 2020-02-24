@@ -1,0 +1,462 @@
+---
+- name: "Play 1: Setup AWS network environment"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Create a network VPC1 in us-east-1
+      ec2_vpc_net:
+        name: "{{ vpc_name1 }}"
+        cidr_block: "{{ vpc_cidr1 }}"
+        region: "{{ region }}"
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: vpc1
+
+    - name: Associate subnet1 to the VPC1
+      ec2_vpc_subnet:
+        state: present
+        vpc_id: "{{ vpc1.vpc.id }}"
+        region: "{{ region }}"
+        cidr: "{{ subnet_cidr1 }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        map_public: true
+        resource_tags:
+          Name: "{{ subnet_name1 }}"
+      register: subnet1
+
+    - name: Create Security Group1
+      ec2_group:
+        name: "{{ securitygroup_name1 }}"
+        description: DEV-server1 Security Group1
+        vpc_id: "{{ vpc1.vpc.id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        rules:
+          - proto: udp
+            ports:
+              - 123
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            ports:
+              - 80
+              - 22
+              - 179
+            cidr_ip: 0.0.0.0/0
+          - proto: icmp
+            from_port: 8
+            to_port: -1
+            cidr_ip: 0.0.0.0/0
+      register: security_group1
+
+    - name: Create a network VPC2 in us-east-1
+      ec2_vpc_net:
+        name: "{{ vpc_name2 }}"
+        cidr_block: "{{ vpc_cidr2 }}"
+        region: "{{ region }}"
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: vpc2
+
+    - name: Associate subnet2 to the VPC2
+      ec2_vpc_subnet:
+        state: present
+        vpc_id: "{{ vpc2.vpc.id }}"
+        region: "{{ region }}"
+        cidr: "{{ subnet_cidr2 }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        map_public: true
+        resource_tags:
+          Name: "{{ subnet_name2 }}"
+      register: subnet2
+
+    - name: Create Security Group2
+      ec2_group:
+        name: "{{ securitygroup_name2 }}"
+        description: DEV-server2 Security Group2
+        vpc_id: "{{ vpc2.vpc.id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        rules:
+          - proto: udp
+            ports:
+              - 123
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            ports:
+              - 80
+              - 22
+              - 179
+            cidr_ip: 0.0.0.0/0
+          - proto: icmp
+            from_port: 8
+            to_port: -1
+            cidr_ip: 0.0.0.0/0
+      register: security_group2
+
+    - name: Create local VPC peering connection
+      ec2_vpc_peer:
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "{{ vpc1.vpc.id }}"
+        peer_vpc_id: "{{ vpc2.vpc.id }}"
+        state: present
+        tags:
+          Name: Peering connection for VPC 1 to VPC 2
+      register: vpc_peer
+
+    - name: Accept local VPC peering request
+      ec2_vpc_peer:
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        peering_id: "{{ vpc_peer.peering_id }}"
+        state: accept
+      register: action_peer
+
+    - name: Create a new ec2 key pair
+      ec2_key:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        name: "{{ keypair_name }}"
+        region: "{{ region }}"
+      register: keypair
+
+    - name: Copy EC2 private key locally so it can be used to SSH
+      copy: >
+        content="{{ keypair.key.private_key }}"
+        dest="{{ ec2_key_directory }}aws-keypair.pub" mode=0400
+      when: keypair.changed == true
+
+    - name: Create an IGW1
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc1.vpc.id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        state: "present"
+        tags:
+          Name: "{{ igw_name1 }}"
+      register: igw1
+
+    - name: Add Default Route IGW1 and Route to VPC2
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc1.vpc.id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        subnets:
+          - "{{ subnet1.subnet.id }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ igw1.gateway_id }}"
+          - dest: 10.20.0.0/24
+            gateway_id: "{{ vpc_peer.peering_id }}"
+        tags:
+          Name: "{{ route_name1 }}"
+
+    - name: Create an IGW2
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc2.vpc.id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        state: "present"
+        tags:
+          Name: "{{ igw_name2 }}"
+      register: igw2
+
+    - name: Add Default Route IGW2 and Route to VPC1
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc2.vpc.id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        subnets:
+          - "{{ subnet2.subnet.id }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ igw2.gateway_id }}"
+          - dest: 10.10.0.0/24
+            gateway_id: "{{ vpc_peer.peering_id }}"
+        tags:
+          Name: "{{ route_name2 }}"
+
+- name: "Play 2: Create Ubuntu Server1"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    image: ami-08bc77a2c7eb2b1da
+    hostname1: DEV-server1
+
+  tasks:
+    - name: Create EC2 server
+      ec2:
+        image: "{{ image }}"
+        wait: true
+        instance_type: t2.micro
+        instance_tags:
+          Name: "{{ hostname1 }}"
+          Role: server1
+          Owner: wlehrsch
+          Tenant: tenant1
+        region: "{{ region }}"
+        group_id: "{{ security_group1.group_id }}"
+        vpc_subnet_id: "{{ subnet1.subnet.id }}"
+        key_name: "{{ keypair_name }}"
+        count_tag:
+          Name: "{{ hostname1 }}"
+        exact_count: 1
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: ec21
+
+    - name: DEV-server1 | Set the Instances facts
+      set_fact:
+        instance1_public_ip: "{{ ec21.instances[0].public_ip }}"
+        instance1_private_ip: "{{ ec21.instances[0].private_ip }}"
+        instance1_id: "{{ ec21.instances[0].id }}"
+
+    - name: Add the newly created EC2 instance(s) to host group
+      lineinfile:
+        dest: "./hosts"
+        line: "DEV-server1 ansible_host={{ instance1_public_ip }}"
+        insertafter: '^\[devserver\]'
+        state: present
+
+    - name: Add the newly private IP of EC2 instance to csr1 yaml
+      lineinfile:
+        dest: "./host_vars/EC2-csr1.yml"
+        line: "      - {{ instance1_private_ip }}"
+        insertafter: EOF
+        state: present
+
+    - name: Add the newly private IP of EC2 instance to csr2 yaml
+      lineinfile:
+        dest: "./host_vars/EC2-csr2.yml"
+        line: "      - {{ instance1_private_ip }}"
+        insertafter: EOF
+        state: present
+
+    - name: DEV-server1 | Wait for SSH to come up
+      local_action:
+        module: wait_for
+        host: "{{ item }}"
+        port: 22
+        state: started
+      with_items:
+        - "{{ instance1_public_ip }}"
+
+    - name: DEV-server1 | Display server info
+      debug:
+        msg:
+          - "{{ hostname1 }} is ready for configuration"
+          - "Public IP Address {{ instance1_public_ip }}"
+          - "Private IP Address {{ instance1_private_ip }}"
+
+- name: "Play 3: Create CSR1Kv Router1"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    csr_image: ami-03702b5ca5089a0a2
+    hostname2: EC2-csr1
+
+  tasks:
+    - name: Create CSR1kv Router
+      ec2:
+        key_name: "{{ keypair_name }}"
+        region: "{{ region }}"
+        instance_type: t2.medium
+        instance_tags:
+          Name: "{{ hostname2 }}"
+          Role: router1
+          Owner: wlehrsch
+          Tenant: tenant1
+        image: "{{ csr_image }}"
+        wait: true
+        exact_count: 1
+        count_tag:
+          - Name: "{{ hostname2 }}"
+        vpc_subnet_id: "{{ subnet1.subnet.id }}"
+        assign_public_ip: true
+        group_id: "{{ security_group1.group_id }}"
+        source_dest_check: false
+        user_data: "ios-config-0001=hostname {{ hostname2 }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: csr1
+
+    - name: CSR | Set the Instances facts
+      set_fact:
+        csr_instance1_public_ip: "{{ csr1.tagged_instances[0].public_ip }}"
+        when: csr1.tagged_instances[0] is defined
+
+    - name: Add the newly created CSR router(s) to host group
+      lineinfile:
+        dest: "./hosts"
+        line: "EC2-csr1 ansible_host={{ csr_instance1_public_ip }}"
+        insertafter: '^\[csr\]'
+        state: present
+
+    - name: CSR | Wait for SSH to come up
+      local_action:
+        module: wait_for
+        host: "{{ item }}"
+        port: 22
+        state: started
+      with_items:
+        - "{{ csr_instance1_public_ip }}"
+
+    - name: CSR | Display router info
+      debug:
+        msg:
+          - "{{ hostname2 }} is ready for configuration"
+          - "Public IP Address {{ csr_instance1_public_ip }}"
+
+- name: "Play 4: Create Ubuntu Server2"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    image: ami-08bc77a2c7eb2b1da
+    hostname1: DEV-server2
+
+  tasks:
+    - name: Create EC2 server
+      ec2:
+        image: "{{ image }}"
+        wait: true
+        instance_type: t2.micro
+        instance_tags:
+          Name: "{{ hostname1 }}"
+          Role: server2
+          Owner: wlehrsch
+          Tenant: tenant2
+        region: "{{ region }}"
+        group_id: "{{ security_group2.group_id }}"
+        vpc_subnet_id: "{{ subnet2.subnet.id }}"
+        key_name: "{{ keypair_name }}"
+        count_tag:
+          Name: "{{ hostname1 }}"
+        exact_count: 1
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: ec22
+
+    - name: DEV-server2 | Set the Instances facts
+      set_fact:
+        instance2_public_ip: "{{ ec22.instances[0].public_ip }}"
+        instance2_private_ip: "{{ ec22.instances[0].private_ip }}"
+        instance2_id: "{{ ec22.instances[0].id }}"
+
+    - name: Add the newly created EC2 instance(s) to host group
+      lineinfile:
+        dest: "./hosts"
+        line: "DEV-server2 ansible_host={{ instance2_public_ip }}"
+        insertafter: '^\[devserver\]'
+        state: present
+
+    - name: Add the newly private IP of EC2 instance to csr1 yaml
+      lineinfile:
+        dest: "./host_vars/EC2-csr1.yml"
+        line: "      - {{ instance2_private_ip }}"
+        insertafter: EOF
+        state: present
+
+    - name: Add the newly private IP of EC2 instance to csr2 yaml
+      lineinfile:
+        dest: "./host_vars/EC2-csr2.yml"
+        line: "      - {{ instance2_private_ip }}"
+        insertafter: EOF
+        state: present
+
+    - name: DEV-server2 | Wait for SSH to come up
+      local_action:
+        module: wait_for
+        host: "{{ item }}"
+        port: 22
+        state: started
+      with_items:
+        - "{{ instance2_public_ip }}"
+
+    - name: DEV-server2 | Display server info
+      debug:
+        msg:
+          - "{{ hostname1 }} is ready for configuration"
+          - "Public IP Address {{ instance2_public_ip }}"
+          - "Private IP Address {{ instance2_private_ip }}"
+
+- name: "Play 5: Create CSR1Kv Router2"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    csr_image: ami-03702b5ca5089a0a2
+    hostname2: EC2-csr2
+
+  tasks:
+    - name: Create CSR1kv Router
+      ec2:
+        key_name: "{{ keypair_name }}"
+        region: "{{ region }}"
+        instance_type: t2.medium
+        instance_tags:
+          Name: "{{ hostname2 }}"
+          Role: router2
+          Owner: wlehrsch
+          Tenant: tenant2
+        image: "{{ csr_image }}"
+        wait: true
+        exact_count: 1
+        count_tag:
+          - Name: "{{ hostname2 }}"
+        vpc_subnet_id: "{{ subnet2.subnet.id }}"
+        assign_public_ip: true
+        group_id: "{{ security_group2.group_id }}"
+        source_dest_check: false
+        user_data: "ios-config-0001=hostname {{ hostname2 }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: csr2
+
+    - name: CSR | Set the Instances facts
+      set_fact:
+        csr_instance2_public_ip: "{{ csr2.tagged_instances[0].public_ip }}"
+        when: csr2.tagged_instances[0] is defined
+
+    - name: Add the newly created CSR router(s) to host group
+      lineinfile:
+        dest: "./hosts"
+        line: "EC2-csr2 ansible_host={{ csr_instance2_public_ip }}"
+        insertafter: '^\[csr\]'
+        state: present
+
+    - name: CSR | Wait for SSH to come up
+      local_action:
+        module: wait_for
+        host: "{{ item }}"
+        port: 22
+        state: started
+      with_items:
+        - "{{ csr_instance2_public_ip }}"
+
+    - name: CSR | Display router info
+      debug:
+        msg:
+          - "{{ hostname2 }} is ready for configuration"
+          - "Public IP Address {{ csr_instance2_public_ip }}"
+...

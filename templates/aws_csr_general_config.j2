@@ -1,0 +1,28 @@
+clock timezone EST -5 0
+clock summer-time EST recurring
+
+username cisco privilege 15 secret cisco
+aaa new-model
+aaa authentication login test local
+aaa authentication enable default enable
+aaa authorization exec test local if-authenticated
+
+!
+interface {{ interface.name }}
+  description {{ interface.description }}
+  ip address {{ interface.ip }} {{ interface.mask }}
+
+
+ip ssh server algorithm authentication keyboard publickey
+
+line vty 0 4
+ exec-timeout 360 0
+ authorization exec test
+ login authentication test
+ transport input ssh
+line vty 5 20
+ transport input ssh
+
+{% for aws_ntp in ntp.srv %}
+    ntp server {{ aws_ntp }}
+{% endfor %}

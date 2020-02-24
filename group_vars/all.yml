@@ -1,0 +1,26 @@
+---
+aws_access_key: "AKIA2H7KOBVHLQTUQ3PM"
+aws_secret_key: "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"
+region: "us-east-1"
+
+vpc_cidr1: 10.10.0.0/16
+vpc_cidr2: 10.20.0.0/16
+vpc_name1: "VPC1 Ansible Created"
+vpc_name2: "VPC2 Ansible Created"
+
+subnet_name1: "Ansible Created Subnet1"
+subnet_name2: "Ansible Created Subnet2"
+subnet_cidr1: 10.10.0.0/24
+subnet_cidr2: 10.20.0.0/24
+
+igw_name1: "Traffic IGW1"
+igw_name2: "Traffic IGW2"
+route_name1: "VPC1 Routes"
+route_name2: "VPC2 Routes"
+
+securitygroup_name1: "Ansible Security Group1"
+securitygroup_name2: "Ansible Security Group2"
+
+ec2_key_directory: "/Users/lehrschw/.ssh/"
+keypair_name: "aws-keypair"
+...

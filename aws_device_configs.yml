@@ -1,0 +1,59 @@
+---
+- name: "Play 1: Install and Setup NTP on DEV-servers"
+  hosts: devserver
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Install NTP daemon
+      apt:
+        name: ntp
+        state: present
+
+    - name: Ensure NTP daemon autostart
+      service:
+        name: ntp
+        state: started
+
+    - name: Open inbound NTP connections through FW on DEV-servers
+      ufw:
+        rule: allow
+        port: '123'
+        proto: udp
+
+    - name: Checking NTP Status on DEV-servers
+      shell: "timedatectl status"
+      register: time_status
+
+    - name: Display NTP Server Status
+      debug:
+        msg: "{{ time_status.stdout_lines }}"
+
+- name: "Play 2: Setup CSR1kv configurations and NTP peer to DEV-servers"
+  hosts: csr
+  connection: network_cli
+  gather_facts: false
+
+  tasks:
+    - name: Provision CSR1kv routers with Loopback and NTP server
+      cli_config:
+        config: "{{ lookup('template', 'templates/aws_csr_general_config.j2') }}"
+
+    - name: Sleep for 40 seconds and continue play
+      wait_for:
+        timeout: 40
+      delegate_to: localhost
+
+    - name: Output NTP configuration on CSR1kv routers
+      ios_command:
+        commands: show ntp associations
+      register: ntp_status
+
+    - name: Display NTP peering status
+      debug:
+        msg: "{{ ntp_status.stdout_lines }}"
+
+    - name: Save configuration
+      ios_config:
+        save_when: modified
+...

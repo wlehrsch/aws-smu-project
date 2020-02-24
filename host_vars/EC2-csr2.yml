@@ -1,0 +1,9 @@
+---
+interface:
+   name: Loopback0
+   description: This interface was configured by Ansible
+   ip: 1.1.1.2
+   mask: 255.255.255.255
+
+ntp:
+    srv:
