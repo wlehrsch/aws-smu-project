@@ -14,3 +14,4 @@ The first playbook aws_ec2_playbook.yml will fully automate the creation of the 
 
 The second playbook aws_device_configs.yml will provision the environment to support the NTP protocol on a Linux servers and the Cisco CSR1kv routers.  The playbook will first configure both Linux servers as an NTP server.  The playbook will then provision both Cisco CSR1kv routers with general baseline router configurations and provision the routers to point to the Linux servers acting as NTP Servers for network time services.  The playbook will then check to ensure both router’s clocks are synced with the NTP server.  
 
+![](images/topology.png)
