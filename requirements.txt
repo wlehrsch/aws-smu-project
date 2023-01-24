@@ -1,4 +1,4 @@
-ansible==2.8.8
+ansible==7.0.0
 yamllint
 boto
 boto3
